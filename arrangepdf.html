@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PDF Rearrangement Tool</title>
+  <!-- PDF.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+  <!-- PDF-lib Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background-color: #f0f0f0;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .container {
+      max-width: 1000px;
+      margin: auto;
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 0 15px rgba(0, 0, 0, 0.2);
+    }
+    input[type="file"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+      box-sizing: border-box;
+    }
+    .thumbnails {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .thumbnail {
+      position: relative;
+      cursor: pointer;
+      border: 2px solid transparent;
+      border-radius: 4px;
+    }
+    .thumbnail.selected {
+      border-color: #007bff;
+    }
+    .thumbnail img {
+      width: 150px;
+      height: auto;
+      display: block;
+    }
+    .page-info {
+      position: absolute;
+      bottom: 4px;
+      right: 4px;
+      background: rgba(0, 0, 0, 0.6);
+      color: white;
+      padding: 2px 6px;
+      font-size: 12px;
+      border-radius: 3px;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      background-color: #007bff;
+      border: none;
+      color: white;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    button:disabled {
+      background-color: #aaa;
+      cursor: not-allowed;
+    }
+    progress {
+      width: 100%;
+      height: 20px;
+      margin-top: 20px;
+      display: none;
+    }
+    a#download-link {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+      display: block;
+      background-color: #28a745;
+      color: white;
+      padding: 15px;
+      border-radius: 4px;
+      text-decoration: none;
+    }
+    a#download-link:hover {
+      background-color: #218838;
+    }
+    .info {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #555;
+    }
+    .note {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #555;
+    }
+    .info p {
+      margin: 5px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>PDF Rearrangement Tool</h1>
+    <input type="file" id="pdf-upload" accept="application/pdf" multiple />
+    
+    <div class="info">
+      <p>Uploaded PDFs: <span id="uploaded-count">0</span>/5</p>
+      <p>Total Pages: <span id="total-pages">0</span></p>
+    </div>
+    
+    <div class="thumbnails" id="thumbnails"></div>
+    
+    <button id="combine-btn" disabled>Combine Selected Pages</button>
+    <progress id="progress-bar" value="0" max="100"></progress>
+    <a id="download-link">Download Combined PDF</a>
+    
+    <div class="note">
+      <p><strong>Note:</strong> Click on page thumbnails to select or deselect them. Selected pages will be highlighted. You can combine selected pages from up to five PDF files into a single PDF.</p>
+    </div>
+  </div>
+
+  <script>
+    // Get references to HTML elements
+    const pdfUpload = document.getElementById('pdf-upload');
+    const thumbnailsContainer = document.getElementById('thumbnails');
+    const combineBtn = document.getElementById('combine-btn');
+    const progressBar = document.getElementById('progress-bar');
+    const downloadLink = document.getElementById('download-link');
+    const uploadedCountDisplay = document.getElementById('uploaded-count');
+    const totalPagesDisplay = document.getElementById('total-pages');
+
+    let uploadedPDFs = []; // Array to store uploaded PDF data
+    let totalPages = 0; // Total number of pages across all PDFs
+
+    // Handle PDF file uploads
+    pdfUpload.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files);
+      if (files.length > 5) {
+        alert('You can upload a maximum of 5 PDF files.');
+        pdfUpload.value = ''; // Reset file input
+        return;
+      }
+
+      // Clear previous data
+      uploadedPDFs = [];
+      thumbnailsContainer.innerHTML = '';
+      totalPages = 0;
+      uploadedCountDisplay.textContent = '0';
+      totalPagesDisplay.textContent = '0';
+      combineBtn.disabled = true;
+      downloadLink.style.display = 'none';
+
+      // Process each uploaded PDF
+      for (const [index, file] of files.entries()) {
+        if (file.type !== 'application/pdf') {
+          alert(`File "${file.name}" is not a valid PDF.`);
+          continue;
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        uploadedPDFs.push({
+          name: file.name,
+          arrayBuffer: arrayBuffer,
+          pdfDoc: null, // To be loaded later
+          numPages: 0
+        });
+
+        // Update uploaded count
+        uploadedCountDisplay.textContent = uploadedPDFs.length.toString();
+      }
+
+      // Load all PDFs with PDF.js to render thumbnails
+      for (const [pdfIndex, pdfData] of uploadedPDFs.entries()) {
+        try {
+          const loadingTask = pdfjsLib.getDocument({ data: pdfData.arrayBuffer });
+          const pdf = await loadingTask.promise;
+          pdfData.numPages = pdf.numPages;
+          totalPages += pdf.numPages;
+          pdfData.pdfDoc = pdf; // Store the loaded PDF.js document
+
+          // Render each page as a thumbnail
+          for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 0.3 }); // Scale down for thumbnail
+
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            const renderContext = {
+              canvasContext: context,
+              viewport: viewport
+            };
+
+            await page.render(renderContext).promise;
+
+            const img = document.createElement('img');
+            img.src = canvas.toDataURL('image/png');
+
+            const thumbnailDiv = document.createElement('div');
+            thumbnailDiv.classList.add('thumbnail');
+            thumbnailDiv.dataset.pdfIndex = pdfIndex;
+            thumbnailDiv.dataset.pageNum = pageNum;
+            thumbnailDiv.appendChild(img);
+
+            const pageInfo = document.createElement('div');
+            pageInfo.classList.add('page-info');
+            pageInfo.textContent = `PDF ${pdfIndex + 1} - Page ${pageNum}`;
+            thumbnailDiv.appendChild(pageInfo);
+
+            // Add click event to select/deselect
+            thumbnailDiv.addEventListener('click', () => {
+              thumbnailDiv.classList.toggle('selected');
+              updateCombineButtonState();
+            });
+
+            thumbnailsContainer.appendChild(thumbnailDiv);
+          }
+        } catch (error) {
+          console.error(`Error loading PDF "${pdfData.name}":`, error);
+          alert(`Failed to load PDF "${pdfData.name}".`);
+        }
+      }
+
+      // Update total pages display
+      totalPagesDisplay.textContent = totalPages.toString();
+
+      // Enable combine button if there are selectable pages
+      if (totalPages > 0) {
+        combineBtn.disabled = false;
+      }
+    });
+
+    // Update the state of the Combine button based on selected pages
+    function updateCombineButtonState() {
+      const selectedThumbnails = document.querySelectorAll('.thumbnail.selected');
+      combineBtn.disabled = selectedThumbnails.length === 0;
+    }
+
+    // Handle Combine button click
+    combineBtn.addEventListener('click', async () => {
+      const selectedThumbnails = document.querySelectorAll('.thumbnail.selected');
+      if (selectedThumbnails.length === 0) {
+        alert('Please select at least one page to combine.');
+        return;
+      }
+
+      // Disable UI elements during processing
+      combineBtn.disabled = true;
+      progressBar.style.display = 'block';
+      progressBar.value = 0;
+      downloadLink.style.display = 'none';
+
+      try {
+        // Create a new PDF-lib document
+        const mergedPdf = await PDFLib.PDFDocument.create();
+
+        // Load all uploaded PDFs with PDF-lib
+        const pdfLibDocs = await Promise.all(uploadedPDFs.map(async (pdfData) => {
+          const pdfDoc = await PDFLib.PDFDocument.load(pdfData.arrayBuffer);
+          return pdfDoc;
+        }));
+
+        // Iterate over selected thumbnails and add pages to the merged PDF
+        let processedPages = 0;
+        for (const thumbnail of selectedThumbnails) {
+          const pdfIndex = parseInt(thumbnail.dataset.pdfIndex);
+          const pageNum = parseInt(thumbnail.dataset.pageNum);
+
+          const sourcePdf = pdfLibDocs[pdfIndex];
+          const [copiedPage] = await mergedPdf.copyPages(sourcePdf, [pageNum - 1]); // PDF-lib uses zero-based indexing
+          mergedPdf.addPage(copiedPage);
+
+          processedPages++;
+          // Update progress bar
+          progressBar.value = (processedPages / selectedThumbnails.length) * 100;
+        }
+
+        // Serialize the merged PDF
+        const mergedPdfBytes = await mergedPdf.save();
+
+        // Create a blob and set up the download link
+        const blob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        downloadLink.href = url;
+
+        // Calculate size in MB
+        const mergedSizeMB = (mergedPdfBytes.length / (1024 * 1024)).toFixed(2);
+        downloadLink.download = 'combined.pdf';
+        downloadLink.textContent = `Download Combined PDF (${mergedSizeMB} MB)`;
+        downloadLink.style.display = 'block';
+      } catch (error) {
+        console.error('An error occurred during combining:', error);
+        alert('An error occurred while combining the PDFs. Please try again.');
+      } finally {
+        // Re-enable UI elements
+        combineBtn.disabled = false;
+        progressBar.style.display = 'none';
+        progressBar.value = 0;
+      }
+    });
+  </script>
+</body>
+</html>

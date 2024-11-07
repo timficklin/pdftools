@@ -198,6 +198,7 @@
             try {
                 const arrayBuffer = await selectedFile.arrayBuffer();
                 const pdfDoc = await PDFLib.PDFDocument.load(arrayBuffer);
+                
                 // Remove Standard Metadata Fields
                 pdfDoc.setTitle('');
                 pdfDoc.setAuthor('');
@@ -217,19 +218,46 @@
                     pdfDoc.catalog.delete(PDFLib.PDFName.of('Metadata'));
                 }
 
-                // Remove URLs and Annotations
+                // Remove Annotations
                 const pages = pdfDoc.getPages();
-                pages.forEach(page => {
-                    const annotations = page.node.Annots();
-                    if (annotations) {
-                        annotations.forEach((annotRef) => {
-                            const annot = pdfDoc.context.lookup(annotRef);
-                            const subtype = annot.get(PDFLib.PDFName.of('Subtype'));
-                            if (subtype && subtype.name === 'Link') {
-                                annot.set(PDFLib.PDFName.of('A'), null); // Remove the action (which may contain the URI)
+                pages.forEach((page, pageIndex) => {
+                    // Access the low-level /Annots array
+                    const annots = page.node.Annots();
+
+                    if (!annots || annots.size() === 0) {
+                        console.log(`Page ${pageIndex + 1}: No annotations found.`);
+                        return;
+                    }
+
+                    console.log(`Page ${pageIndex + 1}: Found ${annots.size()} annotation(s).`);
+
+                    // Make a copy of annotation references to avoid modification issues during iteration
+                    const annotRefs = [];
+                    if (annots) {
+                        const size = annots?.size();
+                        if (size) {
+                            for (let i = 0; i < size; i++) {
+                                annotRefs.push(annots.get(i));
+                                console.log(annots.get(i)); 
                             }
-                        });
-                        annotations.clear(); // Remove all annotations
+                        }
+                    }
+
+                    annotRefs.forEach((annotRef, index) => {
+                        // Remove the annotation reference from the /Annots array
+                        const annotIndex = annots.indexOf(annotRef);
+                        if (annotIndex !== -1) {
+                            annots.remove(annotIndex);
+                            console.log(`Page ${pageIndex + 1}: Removed annotation ${index + 1}.`);
+                        } else {
+                            console.log(`Page ${pageIndex + 1}: Annotation ${index + 1} not found in /Annots array.`);
+                        }
+                    });
+
+                    // If no annotations remain, remove the /Annots key
+                    if (annots.size() === 0) {
+                        page.node.delete(PDFLib.PDFName.of('Annots'));
+                        console.log(`Page ${pageIndex + 1}: All annotations removed.`);
                     }
                 });
 

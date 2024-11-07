@@ -7,7 +7,7 @@ Welcome to the PDF Tools project! This repository contains tools to work with PD
 ## Tools
 
 - [Clean PDF](https://timficklin.github.io/pdftools/cleanpdf.html): A tool to clean basic metadata and hidden data from PDF files.
-- [Rearrange PDF (beta)](https://timficklin.github.io/pdftools/crearrangepdf.html): A tool to rearrange PDF files.
+- [Rearrange PDF (beta)](https://timficklin.github.io/pdftools/rearrangepdf.html): A tool to rearrange PDF files.
 
 ## Usage
 

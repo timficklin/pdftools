@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<!-- Change Log
+  v3:
+    * first fully functional & working version
+    * added change log!
+  v4:
+    * changed changed ratio of MB to KB to 1000 and KB to B to 1000 from 1024 and 1024
+    * set the download file name to be the original file name with '-compressed' appended before the extension
+-->
+<head>
+  <meta charset="UTF-8">
+  <title>Advanced Client-Side PDF Compressor</title>
+  <!-- PDF.js Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+  <!-- PDF-lib Library -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 40px;
+      background-color: #f9f9f9;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .container {
+      max-width: 700px;
+      margin: auto;
+      background: white;
+      padding: 30px;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    input[type="file"], input[type="number"] {
+      width: 100%;
+      padding: 10px;
+      margin-top: 10px;
+      margin-bottom: 20px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 15px;
+      background-color: #28a745;
+      border: none;
+      color: white;
+      font-size: 16px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    button:disabled {
+      background-color: #aaa;
+      cursor: not-allowed;
+    }
+    progress {
+      width: 100%;
+      height: 20px;
+      margin-top: 20px;
+      display: none;
+    }
+    a#download-link {
+      display: none;
+      margin-top: 20px;
+      text-align: center;
+      display: block;
+      background-color: #007bff;
+      color: white;
+      padding: 15px;
+      border-radius: 4px;
+      text-decoration: none;
+    }
+    a#download-link:hover {
+      background-color: #0056b3;
+    }
+    .info {
+      margin-top: 10px;
+      font-size: 14px;
+      color: #555;
+    }
+    .note {
+      margin-top: 20px;
+      font-size: 14px;
+      color: #555;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Advanced PDF Compressor</h1>
+    <input type="file" id="pdf-upload" accept="application/pdf" />
+    
+    <label for="max-size">Maximum File Size (MB):</label>
+    <input type="number" id="max-size" min="1" placeholder="Enter maximum file size in MB" />
+    
+    <div class="info">
+      <p>Original PDF Size: <span id="original-size">-</span> MB</p>
+      <p>Desired Max Size: <span id="desired-size">-</span> MB</p>
+      <p>Compressed PDF Size: <span id="final-size">-</span> MB</p>
+    </div>
+    
+    <button id="compress-btn" disabled>Compress PDF</button>
+    <progress id="progress-bar" value="0" max="100"></progress>
+    <a id="download-link">Download Compressed PDF</a>
+    
+    <div class="note">
+      <p><strong>Note:</strong> This tool converts each page of your PDF into an image, which may result in loss of text quality and searchability. Adjust the compression settings as needed to achieve your desired file size.</p>
+    </div>
+  </div>
+
+  <script>
+    // Get references to HTML elements
+    const pdfUpload = document.getElementById('pdf-upload');
+    const maxSizeInput = document.getElementById('max-size');
+    const compressBtn = document.getElementById('compress-btn');
+    const downloadLink = document.getElementById('download-link');
+    const progressBar = document.getElementById('progress-bar');
+    const originalSizeDisplay = document.getElementById('original-size');
+    const desiredSizeDisplay = document.getElementById('desired-size');
+    const finalSizeDisplay = document.getElementById('final-size');
+
+    let originalPdfBytes = null;
+    let originalFileSizeMB = 0;
+    let desiredMaxSizeMB = 0;
+
+    // Handle PDF file upload
+    pdfUpload.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file && file.type === 'application/pdf') {
+        const reader = new FileReader();
+        reader.onload = function() {
+          originalPdfBytes = new Uint8Array(this.result);
+          originalFileSizeMB = parseFloat((file.size / (1000 * 1000)).toFixed(2));
+          originalSizeDisplay.textContent = originalFileSizeMB.toFixed(2);
+          compressBtn.disabled = false;
+          downloadLink.style.display = 'none';
+          finalSizeDisplay.textContent = '-';
+          console.log('PDF loaded successfully.');
+        };
+        reader.readAsArrayBuffer(file);
+      } else {
+        alert('Please upload a valid PDF file.');
+        compressBtn.disabled = true;
+        originalPdfBytes = null;
+        originalSizeDisplay.textContent = '-';
+        desiredSizeDisplay.textContent = '-';
+        finalSizeDisplay.textContent = '-';
+      }
+    });
+
+    // Handle max size input
+    maxSizeInput.addEventListener('input', (e) => {
+      const value = parseFloat(e.target.value);
+      if (value && value > 0) {
+        desiredMaxSizeMB = parseFloat(value.toFixed(2));
+        desiredSizeDisplay.textContent = desiredMaxSizeMB.toFixed(2);
+        compressBtn.disabled = !originalPdfBytes;
+      } else {
+        desiredMaxSizeMB = 0;
+        desiredSizeDisplay.textContent = '-';
+        compressBtn.disabled = true;
+      }
+    });
+
+    // Handle compression button click
+    compressBtn.addEventListener('click', async () => {
+      if (!originalPdfBytes) {
+        alert('No PDF file loaded.');
+        return;
+      }
+
+      if (!desiredMaxSizeMB || desiredMaxSizeMB <= 0) {
+        alert('Please enter a valid maximum file size in MB.');
+        return;
+      }
+
+      compressBtn.disabled = true;
+      progressBar.style.display = 'block';
+      progressBar.value = 0;
+      downloadLink.style.display = 'none';
+      finalSizeDisplay.textContent = '-';
+
+      try {
+        // Load the PDF with PDF.js
+        const loadingTask = pdfjsLib.getDocument({ data: originalPdfBytes });
+        const pdf = await loadingTask.promise;
+        const numPages = pdf.numPages;
+        console.log(`Number of pages: ${numPages}`);
+
+        // Define compression parameters
+        let compressionQuality = 0.8; // Start with 80% quality
+        const minQuality = 0.3; // Do not go below 30% quality
+        const maxQuality = 1.0; // Maximum quality
+        const qualityStep = 0.05; // Adjust quality by 5% each iteration
+        let compressedPdfBytes = null;
+        let achieved = false;
+        const lowerBound = 0.75 * desiredMaxSizeMB; // 75% of desired size
+        const upperBound = desiredMaxSizeMB; // 100% of desired size
+        let iteration = 0;
+        const maxIterations = 10; // Prevent infinite loops
+        let compressedSizeMB = 0; // Declare outside the loop
+
+        while (compressionQuality >= minQuality && compressionQuality <= maxQuality && iteration < maxIterations && !achieved) {
+          iteration++;
+          console.log(`Iteration ${iteration}: Compression Quality = ${(compressionQuality * 100).toFixed(0)}%`);
+
+          const compressedImages = [];
+
+          for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+            const page = await pdf.getPage(pageNum);
+            const viewport = page.getViewport({ scale: 1.5 }); // Adjust scale as needed
+
+            // Create a canvas for rendering
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            canvas.width = viewport.width;
+            canvas.height = viewport.height;
+
+            // Render the page onto the canvas
+            const renderContext = {
+              canvasContext: context,
+              viewport: viewport
+            };
+            await page.render(renderContext).promise;
+            console.log(`Rendered page ${pageNum}`);
+
+            // Convert canvas to JPEG image with current compression quality
+            const imgDataUrl = canvas.toDataURL('image/jpeg', compressionQuality);
+            compressedImages.push(imgDataUrl);
+            console.log(`Compressed page ${pageNum} with quality ${(compressionQuality * 100).toFixed(0)}%`);
+
+            // Update progress bar (First 50% for rendering)
+            progressBar.value = ((pageNum / numPages) * 50);
+          }
+
+          // Assemble the new PDF with compressed images using PDF-lib
+          const pdfDoc = await PDFLib.PDFDocument.create();
+
+          for (const [index, imgDataUrl] of compressedImages.entries()) {
+            const imgBytes = await fetch(imgDataUrl).then(res => res.arrayBuffer());
+            const img = await pdfDoc.embedJpg(imgBytes); // Use embedPng if using PNG images
+
+            const imgDims = img.scale(1);
+            const page = pdfDoc.addPage([imgDims.width, imgDims.height]);
+
+            page.drawImage(img, {
+              x: 0,
+              y: 0,
+              width: imgDims.width,
+              height: imgDims.height,
+            });
+
+            console.log(`Added page ${index + 1} to new PDF`);
+
+            // Update progress bar (Next 50% for assembling)
+            progressBar.value += (1 / numPages) * 50;
+          }
+
+          // Serialize the PDFDocument to bytes (a Uint8Array)
+          compressedPdfBytes = await pdfDoc.save();
+          console.log('New PDF assembled.');
+
+          compressedSizeMB = parseFloat((compressedPdfBytes.length / (1000 * 1000)).toFixed(2));
+          console.log(`Compressed PDF Size: ${compressedSizeMB} MB`);
+
+          if (compressedSizeMB <= upperBound && compressedSizeMB >= lowerBound) {
+            achieved = true;
+            finalSizeDisplay.textContent = compressedSizeMB.toFixed(2);
+            console.log('Desired compression achieved within 75% to 100% of the specified size.');
+          } else if (compressedSizeMB < lowerBound) {
+            // If compressed size is less than 75% of desired, try increasing quality
+            compressionQuality += qualityStep;
+            console.log(`Compressed size ${compressedSizeMB} MB is less than 75% of desired size (${lowerBound.toFixed(2)} MB). Increasing quality to ${(compressionQuality * 100).toFixed(0)}%.`);
+            // Ensure compressionQuality does not exceed maxQuality
+            if (compressionQuality > maxQuality) {
+              compressionQuality = maxQuality;
+            }
+            // Reset progress bar for next iteration
+            progressBar.value = 0;
+          } else if (compressedSizeMB > upperBound) {
+            // If compressed size is more than desired, decrease quality
+            compressionQuality -= qualityStep;
+            console.log(`Compressed size ${compressedSizeMB} MB is more than desired size (${upperBound.toFixed(2)} MB). Decreasing quality to ${(compressionQuality * 100).toFixed(0)}%.`);
+            // Ensure compressionQuality does not go below minQuality
+            if (compressionQuality < minQuality) {
+              compressionQuality = minQuality;
+            }
+            // Reset progress bar for next iteration
+            progressBar.value = 0;
+          }
+        }
+
+        if (achieved) {
+          // Create a blob from the compressed PDF bytes
+          const blob = new Blob([compressedPdfBytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+
+          // Set up the download link and default the download name to be the original file name with '-compressed' appended before the extension
+          downloadLink.href = url;
+          downloadLink.download = pdfUpload.files[0].name.replace('.pdf', '-compressed.pdf');
+          downloadLink.textContent = `Download Compressed PDF (${compressedSizeMB.toFixed(2)} MB)`;
+          downloadLink.style.display = 'block';
+        } else {
+          // If desired size not achieved within iterations, use the best effort
+          finalSizeDisplay.textContent = compressedSizeMB.toFixed(2);
+          alert(`Could not compress the PDF to within 75% to 100% of ${desiredMaxSizeMB.toFixed(2)} MB. The closest achievable size is ${compressedSizeMB.toFixed(2)} MB.`);
+          
+          // Create a blob from the compressed PDF bytes
+          const blob = new Blob([compressedPdfBytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+
+          // Set up the download link
+          downloadLink.href = url;
+          downloadLink.download = 'compressed.pdf';
+          downloadLink.textContent = `Download Compressed PDF (${compressedSizeMB.toFixed(2)} MB)`;
+          downloadLink.style.display = 'block';
+        }
+      } catch (error) {
+        console.error('An error occurred during compression:', error);
+        alert('An error occurred while compressing the PDF. Please try again.');
+      } finally {
+        compressBtn.disabled = false;
+        progressBar.style.display = 'none';
+        progressBar.value = 0;
+      }
+    });
+  </script>
+</body>
+</html>

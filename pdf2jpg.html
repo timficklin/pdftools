@@ -15,47 +15,39 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
 <style>
-  body {
-    font-family: Arial, sans-serif;
-    background:#f9f9f9;
-    margin:40px;
-  }
+  body { font-family: Arial, sans-serif; background:#f9f9f9; margin:40px; }
   .container {
-    max-width:900px;
-    margin:auto;
-    background:white;
-    padding:30px;
-    border-radius:8px;
-    box-shadow:0 0 10px rgba(0,0,0,0.1);
+    max-width:900px; margin:auto; background:white; padding:30px;
+    border-radius:8px; box-shadow:0 0 10px rgba(0,0,0,0.1);
   }
-  h1 {
-    text-align:center;
-    margin-bottom:30px;
-  }
-  input, select {
-    width:100%;
-    padding:10px;
-    margin:10px 0 20px;
-  }
-  progress {
-    width:100%;
-    height:20px;
-    display:none;
-    margin-top:10px;
-  }
-  #zip-download {
-    display:none;
+  h1 { text-align:center; margin-bottom:30px; }
+  input, select { width:100%; padding:10px; margin:10px 0 20px; }
+  progress { width:100%; height:20px; display:none; margin-top:10px; }
+
+  .actions {
+    display:flex;
+    gap:12px;
     margin:20px 0;
-    background:#28a745;
-    padding:15px;
+    flex-wrap:wrap;
+  }
+
+  .action-btn {
+    flex:1;
+    background:#007bff;
+    padding:14px;
     color:white;
     text-align:center;
     border-radius:4px;
     text-decoration:none;
+    cursor:pointer;
   }
-  #zip-download:hover {
-    background:#1f7f36;
+  .action-btn:hover { background:#0056b3; }
+
+  .zip-btn {
+    background:#28a745;
   }
+  .zip-btn:hover { background:#1f7f36; }
+
   .thumb-grid {
     display:flex;
     flex-wrap:wrap;
@@ -109,19 +101,26 @@
 
   <progress id="progress-bar" value="0" max="100"></progress>
 
-  <a id="zip-download">Download All Pages (ZIP)</a>
+  <div class="actions">
+    <div id="download-all" class="action-btn" style="display:none;">
+      Download All Images
+    </div>
+    <a id="zip-download" class="action-btn zip-btn" style="display:none;">
+      Download ZIP
+    </a>
+  </div>
 
   <div id="outputs" class="thumb-grid"></div>
 </div>
 
 <script>
-const pdfUpload   = document.getElementById("pdf-upload");
-const qualitySel  = document.getElementById("quality");
+const pdfUpload = document.getElementById("pdf-upload");
+const qualitySel = document.getElementById("quality");
 const progressBar = document.getElementById("progress-bar");
-const outputsDiv  = document.getElementById("outputs");
+const outputsDiv = document.getElementById("outputs");
 const zipDownload = document.getElementById("zip-download");
+const downloadAllBtn = document.getElementById("download-all");
 
-// canvas → JPEG blob
 function canvasToBlob(canvas, quality) {
   return new Promise(res => canvas.toBlob(res, "image/jpeg", quality));
 }
@@ -132,6 +131,7 @@ pdfUpload.addEventListener("change", async () => {
 
   outputsDiv.innerHTML = "";
   zipDownload.style.display = "none";
+  downloadAllBtn.style.display = "none";
 
   const arrayBuffer = await file.arrayBuffer();
   const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -139,9 +139,11 @@ pdfUpload.addEventListener("change", async () => {
 
   const quality = Number(qualitySel.value);
   const scale = 1.7;
-  const useZip = pageCount > 5;
-  const zip = useZip ? new JSZip() : null;
   const baseName = file.name.replace(/\.pdf$/i, "") || "output";
+
+  const useZip = pageCount > 5;
+  const useMultiDownload = pageCount >= 2;
+  const zip = useZip ? new JSZip() : null;
 
   progressBar.style.display = "block";
   progressBar.value = 0;
@@ -155,10 +157,7 @@ pdfUpload.addEventListener("change", async () => {
     const canvas = document.createElement("canvas");
     canvas.width = viewport.width;
     canvas.height = viewport.height;
-    await page.render({
-      canvasContext: canvas.getContext("2d"),
-      viewport
-    }).promise;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
 
     const blob = await canvasToBlob(canvas, quality);
     const url = URL.createObjectURL(blob);
@@ -169,7 +168,7 @@ pdfUpload.addEventListener("change", async () => {
     progressBar.value = (p / pageCount) * 100;
   }
 
-  // Thumbnails (always clickable)
+  // Thumbnails
   results.forEach(r => {
     const card = document.createElement("a");
     card.href = r.url;
@@ -189,7 +188,22 @@ pdfUpload.addEventListener("change", async () => {
     outputsDiv.appendChild(card);
   });
 
-  // ZIP if many pages
+  // Multi-download button (2+ files)
+  if (useMultiDownload) {
+    downloadAllBtn.style.display = "block";
+    downloadAllBtn.onclick = () => {
+      results.forEach(r => {
+        const a = document.createElement("a");
+        a.href = r.url;
+        a.download = r.filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      });
+    };
+  }
+
+  // ZIP button (>5 files)
   if (useZip) {
     results.forEach(r => zip.file(r.filename, r.blob));
     const zipBlob = await zip.generateAsync({ type: "blob" });

@@ -9,7 +9,7 @@ Welcome to the PDF Tools project! This repository contains tools to work with PD
 - [Clean PDF](https://timficklin.github.io/pdftools/cleanpdf.html): A tool to clean basic metadata and hidden data from PDF files.
 - [Rearrange PDF (beta)](https://timficklin.github.io/pdftools/rearrangepdf.html): A tool to rearrange PDF files.
 - [Compress PDF](https://timficklin.github.io/pdftools/compresspdf.html): A tool to compress PDF files to below a specified size.
-- [PDF -> JPGEG](https://timficklin.github.io/pdftools/pdf2jpg.html): A tool to confvert PDF files to downloadable jpeg files.
+- [PDF -> JPEG](https://timficklin.github.io/pdftools/pdf2jpg.html): A tool to confvert PDF files to downloadable jpeg files.
 
 ## Usage
 
